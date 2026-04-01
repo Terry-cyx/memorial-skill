@@ -13,6 +13,14 @@ Pillow
 
 # 可选：音频转录（audio_transcriber.py）
 # pip install openai-whisper
-# 首次运行自动下载模型（small 约 244MB）
-# GPU 加速需额外安装 torch
 openai-whisper
+
+# 可选：音频预处理（voice_preprocessor.py）
+# pip install pilk noisereduce soundfile
+pilk
+noisereduce
+soundfile
+
+# 可选：声音训练/合成（voice_trainer.py + voice_synthesizer.py）
+# GPT-SoVITS 需独立安装，见 voice_trainer.py --action setup
+# CosyVoice 需独立安装，见 https://github.com/FunAudioLLM/CosyVoice

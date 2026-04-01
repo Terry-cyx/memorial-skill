@@ -66,6 +66,23 @@ python tools/interview_guide.py --name "爷爷" --birth 1938 --role spouse --all
 python tools/interview_guide.py --name "奶奶" --birth 1940 --role self
 python tools/interview_guide.py --name "奶奶" --birth 1940 --role self --sessions short  # one module per session
 
+# Preprocess audio (silk/amr → clean WAV for transcription and voice training)
+python tools/voice_preprocessor.py --dir ./voice_messages/ --outdir ./processed/
+python tools/voice_preprocessor.py --file msg.silk --output clean.wav
+python tools/voice_preprocessor.py --dir ./voices/ --outdir ./processed/ --no-denoise
+
+# Voice model training (GPT-SoVITS)
+python tools/voice_trainer.py --action setup                                        # install guide
+python tools/voice_trainer.py --action prepare --slug grandpa_wang --audio-dir ./processed/
+python tools/voice_trainer.py --action train --slug grandpa_wang
+python tools/voice_trainer.py --action status --slug grandpa_wang
+
+# Voice synthesis (text → loved one's voice)
+python tools/voice_synthesizer.py --slug grandpa_wang --text "吃亏是福" --output out.wav
+python tools/voice_synthesizer.py --slug grandpa_wang --text-file lines.txt --outdir ./audio/
+python tools/voice_synthesizer.py --slug grandpa_wang --action check                # check engines
+python tools/voice_synthesizer.py --slug grandpa_wang --text "..." --engine cosyvoice --ref-audio ref.wav
+
 # Version management
 python tools/version_manager.py --action list --slug grandpa_wang
 python tools/version_manager.py --action rollback --slug grandpa_wang --to v2
@@ -113,6 +130,9 @@ Each `prompts/*.md` file controls a specific LLM behavior phase. Modify these to
 - `pypinyin` — Chinese name → pinyin slug conversion
 - `Pillow` — Photo EXIF extraction in `photo_analyzer.py`
 - `openai-whisper` — Audio transcription in `audio_transcriber.py` (requires ~244MB model download on first run)
+- `pilk` + `noisereduce` + `soundfile` — Audio preprocessing in `voice_preprocessor.py` (silk→WAV + denoising)
+- `GPT-SoVITS` — Voice cloning training and inference (independent install, see `voice_trainer.py --action setup`)
+- `CosyVoice` — Zero-shot voice cloning fallback (independent install)
 
 Core functionality works without any of these (graceful fallback / clear error message).
 
