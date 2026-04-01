@@ -1,0 +1,16 @@
+# 纪念档案（个人隐私，不提交）
+memorials/*/
+!memorials/example_grandpa/
+
+# 设计文档（不上传）
+spec/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# 系统文件
+.DS_Store
+Thumbs.db
