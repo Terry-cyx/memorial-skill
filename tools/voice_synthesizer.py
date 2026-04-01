@@ -271,13 +271,13 @@ def main():
         print(f"=== {args.slug} 语音合成环境 ===\n")
 
         s = status["gpt_sovits"]
-        print(f"GPT-SoVITS：{'✅ 已安装' if s['available'] else '❌ 未安装'}")
+        print(f"GPT-SoVITS：{'[ok] 已安装' if s['available'] else '[x] 未安装'}")
         if s["available"]:
             print(f"  路径：{s['detail']}")
-            print(f"  模型：{'✅ 已训练 — ' + ', '.join(s.get('models', [])) if s['model_ready'] else '❌ 未训练'}")
+            print(f"  模型：{'[ok] 已训练 — ' + ', '.join(s.get('models', [])) if s['model_ready'] else '[x] 未训练'}")
 
         c = status["cosyvoice"]
-        print(f"\nCosyVoice：{'✅' if c['available'] else '❌'} {c['detail']}")
+        print(f"\nCosyVoice：{'[ok]' if c['available'] else '[x]'} {c['detail']}")
 
         ref = find_ref_audio(args.slug)
         if ref:

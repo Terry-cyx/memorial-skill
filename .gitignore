@@ -5,6 +5,9 @@ memorials/*/
 # 设计文档（不上传）
 spec/
 
+# GPT-SoVITS（独立安装，体积太大不提交）
+GPT-SoVITS/
+
 # Python
 __pycache__/
 *.py[cod]

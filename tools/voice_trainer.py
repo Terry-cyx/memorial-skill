@@ -188,11 +188,11 @@ def action_prepare(slug: str, audio_dir: str):
     print(f"  数据目录：{tdir}")
     print()
     if total_dur < 30:
-        print("  ⚠️ 音频不足 30 秒，建议使用 CosyVoice 零样本模式")
+        print("  [!] 音频不足 30 秒，建议使用 CosyVoice 零样本模式")
     elif total_dur < 180:
-        print("  ℹ️ 音频 < 3 分钟，可尝试 GPT-SoVITS few-shot，效果有限")
+        print("  [i] 音频 < 3 分钟，可尝试 GPT-SoVITS few-shot，效果有限")
     else:
-        print("  ✅ 音频充足，适合 GPT-SoVITS 微调训练")
+        print("  [ok] 音频充足，适合 GPT-SoVITS 微调训练")
         print()
         print("  [下一步] python voice_trainer.py --action train --slug " + slug)
 
@@ -282,21 +282,21 @@ def action_status(slug: str):
         if os.path.exists(manifest_path):
             with open(manifest_path, encoding="utf-8") as f:
                 manifest = json.load(f)
-            print(f"训练数据：✅ 已准备")
+            print(f"训练数据：[ok] 已准备")
             print(f"  文件数：{manifest['total_files']}")
             print(f"  总时长：{manifest['total_duration_seconds']}秒")
         else:
-            print("训练数据：⚠️ 目录存在但缺少 manifest")
+            print("训练数据：[!] 目录存在但缺少 manifest")
 
         annotation_path = os.path.join(tdir, "annotations.list")
         if os.path.exists(annotation_path):
             with open(annotation_path, encoding="utf-8") as f:
                 n_lines = len(f.readlines())
-            print(f"  标注：✅ {n_lines} 条")
+            print(f"  标注：[ok] {n_lines} 条")
         else:
-            print("  标注：❌ 未完成")
+            print("  标注：[x] 未完成")
     else:
-        print("训练数据：❌ 未准备")
+        print("训练数据：[x] 未准备")
         print(f"  请运行：python voice_trainer.py --action prepare --slug {slug}")
 
     # 模型文件
@@ -304,22 +304,22 @@ def action_status(slug: str):
     if os.path.isdir(model_dir):
         pth_files = [f for f in os.listdir(model_dir) if f.endswith(".pth")]
         if pth_files:
-            print(f"训练模型：✅ 已完成")
+            print(f"训练模型：[ok] 已完成")
             for f in pth_files:
                 size_mb = os.path.getsize(os.path.join(model_dir, f)) / 1024 / 1024
                 print(f"  {f} ({size_mb:.1f}MB)")
         else:
-            print("训练模型：⏳ 目录已创建，模型待训练")
+            print("训练模型：[..] 目录已创建，模型待训练")
     else:
-        print("训练模型：❌ 未开始")
+        print("训练模型：[x] 未开始")
 
     # GPT-SoVITS 安装
     print()
     sovits_dir = get_sovits_dir()
     if sovits_dir:
-        print(f"GPT-SoVITS：✅ {sovits_dir}")
+        print(f"GPT-SoVITS：[ok] {sovits_dir}")
     else:
-        print("GPT-SoVITS：❌ 未安装")
+        print("GPT-SoVITS：[x] 未安装")
         print(f"  请运行：python voice_trainer.py --action setup")
 
 
