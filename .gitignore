@@ -8,6 +8,12 @@ spec/
 # GPT-SoVITS（独立安装，体积太大不提交）
 GPT-SoVITS/
 
+# 微信解密工作目录（含用户隐私数据）
+wxdump_work/
+
+# 微信安装包
+WeChatSetup-*.exe
+
 # Python
 __pycache__/
 *.py[cod]
