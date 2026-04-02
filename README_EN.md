@@ -287,6 +287,45 @@ create-memorial/
 
 ---
 
+## Full Pipeline (CLI)
+
+If you prefer command-line over conversation:
+
+```bash
+# ① Extract WeChat voice messages (WeChat 3.9.x must be running)
+python tools/wechat_voice_extractor.py --group "family" --person "target name" --outdir ./voices_raw/
+
+# ② Preprocess: silk → WAV + denoising
+python tools/voice_preprocessor.py --dir ./voices_raw/ --outdir ./voices_processed/
+
+# ③ Transcribe audio to text (for memorial text content)
+python tools/audio_transcriber.py --dir ./voices_processed/ --speaker "name" --format chat --output transcripts.md
+
+# ④ Create memorial directory
+python tools/skill_writer.py --action create --name "display name" --slug my_memorial
+
+# ⑤ One-click voice model training (auto-detects dialect)
+python tools/voice_trainer.py --action full --slug my_memorial --audio-dir ./voices_processed/
+
+# ⑥ Test voice synthesis
+python tools/voice_synthesizer.py --slug my_memorial --text "words to speak in their voice"
+
+# ⑦ Check status
+python tools/voice_synthesizer.py --slug my_memorial --action check
+```
+
+---
+
+## Running Tests
+
+```bash
+python tests/test_tools.py
+```
+
+Covers: file management, version rollback, WeChat/QQ parsing, audio preprocessing, interview generation, voice synthesis.
+
+---
+
 ## Notes
 
 - **Source quality determines archive depth**: chat logs + family interviews > personal description alone
@@ -294,6 +333,17 @@ create-memorial/
 - Family interviews are a unique and important source for memorial-skill — use `/{slug}-interview` to generate tailored questions
 - Archives can be built up over time. Memories surface gradually; add them as they come
 - This Skill is not a substitute for grief. If you find yourself struggling to move forward, please consider professional support
+
+---
+
+## Acknowledgements
+
+The architecture of this project was deeply inspired by two excellent open-source projects:
+
+- [**Colleague.skill**](https://github.com/titanwings/colleague-skill) — Distill a colleague into an AI Skill. Originated the dual-track architecture (Work Skill + Persona) and the 5-layer personality model.
+- [**Ex-Partner.skill**](https://github.com/therealXiaomanChu/ex-skill) — Reconstruct an ex-partner as an AI Skill. Pioneered relationship memory extraction and emotional healing scenarios.
+
+memorial-skill inherits their dual-track analysis framework, prompt-driven architecture, and incremental evolution mechanism, while adding the era-background layer, living-archive mode, and voice cloning capabilities. Thanks to both authors for their open-source spirit.
 
 ---
 

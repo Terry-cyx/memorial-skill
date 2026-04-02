@@ -290,9 +290,14 @@ create-memorial/
 │   ├── voice_synthesizer.py       #   语音合成（文字→亲人声音）
 │   ├── skill_writer.py           #   档案文件管理
 │   └── version_manager.py        #   版本备份与回滚
+├── tools/wechat_voice_extractor.py #  微信语音一键提取（解密+搜索+导出）
+├── tests/
+│   └── test_tools.py             #   自动化测试（8 个测试）
 ├── memorials/                    # 生成的纪念档案（gitignored）
 │   └── example_grandpa/          #   完整示例（虚构爷爷王建国）
-├── spec/                         # 设计规格与测试用例
+│       ├── SKILL.md / remembrance.md / persona.md / meta.json
+│       ├── voice/                #   声音模型目录结构示例
+│       └── materials/            #   原始材料目录结构示例
 ├── docs/PRD.md
 ├── requirements.txt
 └── LICENSE
@@ -314,6 +319,46 @@ create-memorial/
 
 ---
 
+## 一键完整流程（命令行）
+
+如果你更喜欢直接用命令行而不是对话：
+
+```bash
+# ① 提取微信语音（微信 3.9.x 需在运行）
+python tools/wechat_voice_extractor.py --group "家庭群" --person "目标人名" --outdir ./voices_raw/
+
+# ② 预处理：silk → WAV + 降噪
+python tools/voice_preprocessor.py --dir ./voices_raw/ --outdir ./voices_processed/
+
+# ③ 音频转文字（用于纪念档案的文字部分）
+python tools/audio_transcriber.py --dir ./voices_processed/ --speaker "目标人" --format chat --output transcripts.md
+
+# ④ 创建档案目录
+python tools/skill_writer.py --action create --name "称呼" --slug my_memorial
+
+# ⑤ 一键训练声音模型（自动检测方言 + 选择策略）
+python tools/voice_trainer.py --action full --slug my_memorial --audio-dir ./voices_processed/
+
+# ⑥ 测试声音合成
+python tools/voice_synthesizer.py --slug my_memorial --text "想让 ta 说的话"
+
+# ⑦ 查看状态
+python tools/voice_trainer.py --action status --slug my_memorial
+python tools/voice_synthesizer.py --slug my_memorial --action check
+```
+
+---
+
+## 运行测试
+
+```bash
+python tests/test_tools.py
+```
+
+测试覆盖：档案管理、版本回滚、微信/QQ 解析、音频预处理、访谈生成、语音合成。
+
+---
+
 ## 注意事项
 
 - **原材料质量决定档案深度**：聊天记录 + 家人口述 > 仅个人描述
@@ -321,6 +366,17 @@ create-memorial/
 - 家人访谈是 memorial-skill 特有的重要来源——用 `/interview` 命令生成定制问题
 - 档案可以随时补充，不必一次完成。记忆会随时间浮现，慢慢加
 - 本 Skill 不鼓励以档案代替正常的哀伤过程。如果你发现自己难以走出，请寻求专业支持
+
+---
+
+## 致谢
+
+本项目的架构设计深受以下两个优秀的开源项目启发：
+
+- [**同事.skill**](https://github.com/titanwings/colleague-skill) — 将同事蒸馏为 AI Skill，双轨架构（Work Skill + Persona）和 5 层人格模型的原创设计
+- [**前任.skill**](https://github.com/therealXiaomanChu/ex-skill) — 将前任重建为 AI Skill，关系记忆提取和情感疗愈场景的开创者
+
+memorial-skill 继承了它们的双轨分析框架、提示词驱动架构和增量进化机制，并在此基础上增加了时代背景层、生前建档模式和声音克隆能力。感谢两位作者的开源精神。
 
 ---
 
