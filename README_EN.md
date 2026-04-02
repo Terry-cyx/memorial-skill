@@ -202,6 +202,41 @@ For people born before 1985, historical events profoundly shaped how they though
 
 ---
 
+## Voice Cloning — Hear Their Voice Again
+
+The memorial archive isn't just text. If you have WeChat/QQ voice messages from your loved one, the system can train a voice model — **type any text, and hear it spoken in their voice**.
+
+### How Much Audio Do You Need
+
+| Amount | Quality |
+|--------|---------|
+| < 30 seconds | Recognizable timbre (zero-shot mode) |
+| 1-3 minutes | Good timbre match |
+| 5-10 minutes | Highly similar, natural prosody |
+| 10+ minutes | Excellent — almost indistinguishable for short phrases |
+
+> A few dozen voice messages from a family WeChat group is usually enough.
+
+### Dialect Support
+
+**Supported.** Even if your loved one spoke a regional dialect, the voice model can still be trained.
+
+The system trains on dialect audio to capture their unique voice characteristics (SoVITS learns acoustic features, not language). During synthesis, the output uses their voice timbre to speak Mandarin. The result: **sounds like them, but speaks Mandarin**.
+
+> Future versions will support dialect output (synthesized speech in the original dialect). Stay tuned.
+
+### Technical Approach
+
+Built on [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS). Training and inference run **entirely on your local machine** — no data leaves your device.
+
+```
+WeChat/QQ voice messages → Preprocessing (format + denoising) → Train voice model → Type text → Their voice
+```
+
+Requires an NVIDIA GPU (RTX 3060 12GB+ recommended). Training takes ~20-30 minutes.
+
+---
+
 ## Project Structure
 
 This project follows the [AgentSkills](https://agentskills.io) open standard:
@@ -223,6 +258,9 @@ create-memorial/
 │   ├── audio_transcriber.py      #   Audio transcription (Whisper)
 │   ├── photo_analyzer.py         #   Photo EXIF timeline extractor
 │   ├── interview_guide.py        #   Interview question generator (self + family modes)
+│   ├── voice_preprocessor.py      #   Voice preprocessing (silk→WAV + denoising)
+│   ├── voice_trainer.py           #   One-click voice model training (GPT-SoVITS)
+│   ├── voice_synthesizer.py       #   Voice synthesis (text → loved one's voice)
 │   ├── skill_writer.py           #   Archive file management
 │   └── version_manager.py        #   Version backup and rollback
 ├── memorials/                    # Generated memorial archives (gitignored)

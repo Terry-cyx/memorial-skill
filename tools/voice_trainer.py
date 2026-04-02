@@ -250,9 +250,16 @@ def action_train(slug: str, batch_size_s2: int = 16, epochs_s2: int = 10,
     if not ensure_pretrained_models():
         return False
 
+    # 公共环境：确保 GPT-SoVITS 内部模块可 import
+    sovits_pythonpath = os.path.join(sovits_dir, "GPT_SoVITS")
+    base_env = os.environ.copy()
+    existing_pp = base_env.get("PYTHONPATH", "")
+    base_env["PYTHONPATH"] = f"{sovits_dir}{os.pathsep}{sovits_pythonpath}{os.pathsep}{existing_pp}"
+    base_env["PYTHONIOENCODING"] = "utf-8"
+
     # Step 1: 1-get-text (BERT 特征提取)
     print(f"\n[Step 1/6] 提取文本/BERT 特征...")
-    env1 = os.environ.copy()
+    env1 = base_env.copy()
     env1.update({
         "inp_text": annotation_path,
         "inp_wav_dir": wavs_dir,
@@ -267,10 +274,10 @@ def action_train(slug: str, batch_size_s2: int = 16, epochs_s2: int = 10,
     })
     r = subprocess.run(
         [py, "-s", "GPT_SoVITS/prepare_datasets/1-get-text.py"],
-        cwd=sovits_dir, env=env1, capture_output=True, text=True, timeout=600
+        cwd=sovits_dir, env=env1, timeout=600
     )
     if r.returncode != 0:
-        print(f"  [x] 失败: {r.stderr[:500]}")
+        print(f"  [x] Step 1 failed (returncode={r.returncode})")
         return False
     # 合并输出
     txt_parts = os.path.join(exp_dir, "2-name2text-0.txt")
@@ -282,7 +289,7 @@ def action_train(slug: str, batch_size_s2: int = 16, epochs_s2: int = 10,
     # Step 2: 2-get-hubert-wav32k (HuBERT 特征)
     print(f"\n[Step 2/6] 提取 HuBERT 音频特征...")
     ssl_dir = os.path.join(hubert_dir)
-    env2 = os.environ.copy()
+    env2 = base_env.copy()
     env2.update({
         "inp_text": annotation_path,
         "inp_wav_dir": wavs_dir,
@@ -297,16 +304,16 @@ def action_train(slug: str, batch_size_s2: int = 16, epochs_s2: int = 10,
     })
     r = subprocess.run(
         [py, "-s", "GPT_SoVITS/prepare_datasets/2-get-hubert-wav32k.py"],
-        cwd=sovits_dir, env=env2, capture_output=True, text=True, timeout=1200
+        cwd=sovits_dir, env=env2, timeout=1200
     )
     if r.returncode != 0:
-        print(f"  [x] 失败: {r.stderr[:500]}")
+        print(f"  [x] Step 2 failed (returncode={r.returncode})")
         return False
     print(f"  [ok] HuBERT 特征提取完成")
 
     # Step 3: 3-get-semantic (语义 token)
     print(f"\n[Step 3/6] 提取语义 token...")
-    env3 = os.environ.copy()
+    env3 = base_env.copy()
     env3.update({
         "inp_text": annotation_path,
         "inp_wav_dir": wavs_dir,
@@ -322,10 +329,10 @@ def action_train(slug: str, batch_size_s2: int = 16, epochs_s2: int = 10,
     })
     r = subprocess.run(
         [py, "-s", "GPT_SoVITS/prepare_datasets/3-get-semantic.py"],
-        cwd=sovits_dir, env=env3, capture_output=True, text=True, timeout=1200
+        cwd=sovits_dir, env=env3, timeout=1200
     )
     if r.returncode != 0:
-        print(f"  [x] 失败: {r.stderr[:500]}")
+        print(f"  [x] Step 3 failed (returncode={r.returncode})")
         return False
     print(f"  [ok] 语义 token 提取完成")
 
