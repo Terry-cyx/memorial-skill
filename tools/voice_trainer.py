@@ -26,6 +26,7 @@ voice_trainer.py — 声音模型一键训练工具（Phase 2）
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -199,8 +200,39 @@ def action_prepare(slug: str, audio_dir: str):
 
 # ── Train (一键) ──────────────────────────────────────────────────────────────
 
+def _check_transcription_quality(annotation_path: str) -> float:
+    """
+    检测 Whisper 转录质量（0-1 分）。
+    用于判断是否应该微调 GPT（方言/低质量转录时跳过）。
+    """
+    try:
+        with open(annotation_path, encoding="utf-8") as f:
+            lines = [l.strip() for l in f if l.strip()]
+    except Exception:
+        return 0.0
+
+    if not lines:
+        return 0.0
+
+    good = 0
+    for line in lines:
+        parts = line.split("|")
+        if len(parts) < 4:
+            continue
+        text = parts[3]
+        # 判断标准：纯中文字符占比高、没有乱码、长度合理
+        chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
+        total_chars = len(text.replace(" ", ""))
+        if total_chars > 0 and chinese_chars / total_chars > 0.7 and 2 <= len(text) <= 200:
+            good += 1
+
+    score = good / len(lines) if lines else 0.0
+    return score
+
+
 def action_train(slug: str, batch_size_s2: int = 16, epochs_s2: int = 10,
-                 batch_size_s1: int = 8, epochs_s1: int = 15):
+                 batch_size_s1: int = 8, epochs_s1: int = 15,
+                 skip_gpt: bool = False, force_gpt: bool = False):
     """
     一键执行完整 GPT-SoVITS 训练流程。
 
@@ -209,8 +241,8 @@ def action_train(slug: str, batch_size_s2: int = 16, epochs_s2: int = 10,
     2. 1-get-text: 提取文本/BERT 特征
     3. 2-get-hubert-wav32k: 提取 HuBERT 音频特征
     4. 3-get-semantic: 提取语义 token
-    5. SoVITS 微调 (s2_train.py)
-    6. GPT 微调 (s1_train.py)
+    5. SoVITS 微调 (s2_train.py) — 必须
+    6. GPT 微调 (s1_train.py) — 可选（转录质量差时自动跳过）
     """
     sovits_dir = get_sovits_dir()
     if not sovits_dir:
@@ -370,50 +402,64 @@ def action_train(slug: str, batch_size_s2: int = 16, epochs_s2: int = 10,
         return False
     print(f"  [ok] SoVITS 微调完成")
 
-    # Step 5: GPT 微调
-    print(f"\n[Step 5/6] GPT 微调 (batch={batch_size_s1}, epochs={epochs_s1})...")
-    s1_config_template = os.path.join(sovits_dir, "GPT_SoVITS", "configs", "s1longer.yaml")
+    # Step 5: GPT 微调（根据转录质量决定是否执行）
+    do_gpt_train = True
+    if skip_gpt:
+        do_gpt_train = False
+        print(f"\n[Step 5/6] GPT 微调 -- 跳过（--skip-gpt）")
+    elif not force_gpt:
+        quality = _check_transcription_quality(annotation_path)
+        print(f"\n[Step 5/6] 转录质量检测: {quality:.0%}")
+        if quality < 0.5:
+            do_gpt_train = False
+            print(f"  转录质量较低（{quality:.0%} < 50%），可能是方言数据")
+            print(f"  自动跳过 GPT 微调，推理时将使用预训练底模")
+            print(f"  （如需强制训练，添加 --force-gpt 参数）")
+        else:
+            print(f"  转录质量良好（{quality:.0%}），执行 GPT 微调")
 
-    # GPT 训练使用命令行参数
-    s1_dir = exp_dir
-    semantic_path = os.path.join(s1_dir, "6-name2semantic.tsv")
-    phoneme_path = os.path.join(s1_dir, "2-name2text.txt")
-
-    s1_tmp = os.path.join(exp_dir, "tmp_s1.yaml")
-
-    # 读取模板配置
-    import yaml
-    if os.path.exists(s1_config_template):
-        with open(s1_config_template) as f:
-            s1_config = yaml.safe_load(f)
+    if not do_gpt_train:
+        print(f"  [ok] GPT 微调已跳过 — 推理时使用预训练底模 + 微调 SoVITS")
     else:
-        s1_config = {}
+        print(f"  GPT 微调开始 (batch={batch_size_s1}, epochs={epochs_s1})...")
+        s1_config_template = os.path.join(sovits_dir, "GPT_SoVITS", "configs", "s1longer.yaml")
+        s1_dir = exp_dir
+        semantic_path = os.path.join(s1_dir, "6-name2semantic.tsv")
+        phoneme_path = os.path.join(s1_dir, "2-name2text.txt")
+        s1_tmp = os.path.join(exp_dir, "tmp_s1.yaml")
 
-    s1_config["train_semantic_path"] = semantic_path
-    s1_config["train_phoneme_path"] = phoneme_path
-    s1_config["output_dir"] = os.path.join(s1_dir, "logs_s1")
-    s1_config["pretrained_s1"] = s1_ckpt
-    s1_config["batch_size"] = batch_size_s1
-    s1_config["epochs"] = epochs_s1
-    s1_config["save_every_epoch"] = epochs_s1
-    s1_config["if_save_latest"] = True
-    s1_config["if_save_every_weights"] = True
-    s1_config["gpu_numbers"] = "0"
-    s1_config["save_weight_dir"] = os.path.join(sovits_dir, "GPT_weights_v2")
-    s1_config["name"] = exp_name
-    s1_config["version"] = version
+        import yaml
+        if os.path.exists(s1_config_template):
+            with open(s1_config_template) as f:
+                s1_config = yaml.safe_load(f)
+        else:
+            s1_config = {}
 
-    with open(s1_tmp, "w") as f:
-        yaml.dump(s1_config, f)
+        s1_config["train_semantic_path"] = semantic_path
+        s1_config["train_phoneme_path"] = phoneme_path
+        s1_config["output_dir"] = os.path.join(s1_dir, "logs_s1")
+        s1_config["pretrained_s1"] = s1_ckpt
+        s1_config["batch_size"] = batch_size_s1
+        s1_config["epochs"] = epochs_s1
+        s1_config["save_every_epoch"] = epochs_s1
+        s1_config["if_save_latest"] = True
+        s1_config["if_save_every_weights"] = True
+        s1_config["gpu_numbers"] = "0"
+        s1_config["save_weight_dir"] = os.path.join(sovits_dir, "GPT_weights_v2")
+        s1_config["name"] = exp_name
+        s1_config["version"] = version
 
-    r = subprocess.run(
-        [py, "-s", "GPT_SoVITS/s1_train.py", "--config_file", s1_tmp],
-        cwd=sovits_dir, timeout=3600
-    )
-    if r.returncode != 0:
-        print(f"  [x] GPT 训练失败")
-        return False
-    print(f"  [ok] GPT 微调完成")
+        with open(s1_tmp, "w") as f:
+            yaml.dump(s1_config, f)
+
+        r = subprocess.run(
+            [py, "-s", "GPT_SoVITS/s1_train.py", "--config_file", s1_tmp],
+            cwd=sovits_dir, timeout=3600
+        )
+        if r.returncode != 0:
+            print(f"  [x] GPT 训练失败")
+            return False
+        print(f"  [ok] GPT 微调完成")
 
     # Step 6: 复制模型到档案目录
     print(f"\n[Step 6/6] 复制模型文件...")
@@ -537,6 +583,10 @@ def main():
     parser.add_argument("--epochs-s2", type=int, default=10, help="SoVITS epochs")
     parser.add_argument("--batch-size-s1", type=int, default=8, help="GPT batch size")
     parser.add_argument("--epochs-s1", type=int, default=15, help="GPT epochs")
+    parser.add_argument("--skip-gpt", action="store_true",
+                        help="Skip GPT fine-tuning (use pretrained, recommended for dialect)")
+    parser.add_argument("--force-gpt", action="store_true",
+                        help="Force GPT fine-tuning even if transcription quality is low")
     args = parser.parse_args()
 
     if args.action == "status":
@@ -551,7 +601,8 @@ def main():
         if not args.slug:
             parser.error("--slug required")
         action_train(args.slug, args.batch_size_s2, args.epochs_s2,
-                     args.batch_size_s1, args.epochs_s1)
+                     args.batch_size_s1, args.epochs_s1,
+                     skip_gpt=args.skip_gpt, force_gpt=args.force_gpt)
     elif args.action == "full":
         if not args.slug or not args.audio_dir:
             parser.error("--slug and --audio-dir required")

@@ -1,37 +1,45 @@
 #!/usr/bin/env python3
 """
-voice_synthesizer.py — 语音合成工具（Phase 3）
+voice_synthesizer.py — 语音合成工具
 
-输入文字 → 输出亲人声音的音频。
+输入文字 → 输出用亲人声音说出的音频。
 
-支持两种模式：
-  1. GPT-SoVITS 推理（需要已训练的模型，效果最好）
-  2. CosyVoice 零样本（无需训练，提供参考音频即可，Phase 4 备选）
+核心策略（实测验证）：
+  - SoVITS 模型：使用微调后的（学习目标人音色）
+  - GPT 模型：优先使用预训练底模（方言/转录不准时效果更好）
+              如果用户指定微调的 GPT 模型也支持
 
 用法：
-  # 使用 GPT-SoVITS 模型合成
-  python voice_synthesizer.py --slug grandpa_wang --text "吃亏是福" --output output.wav
+  # 单句合成（自动选择模型和参考音频）
+  python voice_synthesizer.py --slug grandpa --text "吃亏是福"
 
-  # 使用 CosyVoice 零样本
-  python voice_synthesizer.py --slug grandpa_wang --text "吃亏是福" --engine cosyvoice --ref-audio ref.wav
+  # 指定输出路径
+  python voice_synthesizer.py --slug grandpa --text "吃亏是福" --output grandpa.wav
 
-  # 批量合成（从文本文件读取，每行一句）
-  python voice_synthesizer.py --slug grandpa_wang --text-file sentences.txt --outdir ./audio_out/
+  # 指定参考音频（影响语气）
+  python voice_synthesizer.py --slug grandpa --text "吃亏是福" --ref-audio ref.wav
 
-  # 查看可用引擎和模型
-  python voice_synthesizer.py --slug grandpa_wang --action check
+  # 使用微调的 GPT（普通话清晰的数据适用）
+  python voice_synthesizer.py --slug grandpa --text "吃亏是福" --use-finetuned-gpt
+
+  # 批量合成
+  python voice_synthesizer.py --slug grandpa --text-file sentences.txt --outdir ./output/
+
+  # 检查环境
+  python voice_synthesizer.py --slug grandpa --action check
 """
 
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
+from typing import Optional
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 MEMORIALS_DIR = os.path.join(PROJECT_ROOT, "memorials")
-
 DEFAULT_SOVITS_DIR = os.path.join(PROJECT_ROOT, "GPT-SoVITS")
 
 
@@ -39,271 +47,328 @@ def voice_dir(slug: str) -> str:
     return os.path.join(MEMORIALS_DIR, slug, "voice")
 
 
-# ── 引擎检测 ──────────────────────────────────────────────────────────────────
+def get_sovits_dir() -> str:
+    d = os.environ.get("GPT_SOVITS_DIR", DEFAULT_SOVITS_DIR)
+    return d if os.path.isdir(d) else ""
 
-def check_engines(slug: str) -> dict:
-    """检查可用的合成引擎和模型。"""
-    status = {
-        "gpt_sovits": {"available": False, "model_ready": False, "detail": ""},
-        "cosyvoice": {"available": False, "detail": ""},
-    }
 
-    # GPT-SoVITS
-    sovits_dir = os.environ.get("GPT_SOVITS_DIR", DEFAULT_SOVITS_DIR)
-    if os.path.isdir(sovits_dir):
-        status["gpt_sovits"]["available"] = True
-        status["gpt_sovits"]["detail"] = sovits_dir
+# ── 模型查找 ──────────────────────────────────────────────────────────────────
 
+def find_sovits_model(slug: str) -> Optional[str]:
+    """查找微调的 SoVITS 模型（.pth）。"""
+    model_dir = os.path.join(voice_dir(slug), "gpt_sovits")
+    if not os.path.isdir(model_dir):
+        return None
+    pth = [f for f in os.listdir(model_dir) if f.endswith(".pth")]
+    if pth:
+        return os.path.join(model_dir, sorted(pth)[-1])
+    # 也查 GPT-SoVITS 的输出目录
+    sovits_dir = get_sovits_dir()
+    if sovits_dir:
+        weight_dir = os.path.join(sovits_dir, "SoVITS_weights_v2")
+        if os.path.isdir(weight_dir):
+            matches = [f for f in os.listdir(weight_dir) if slug in f and f.endswith(".pth")]
+            if matches:
+                return os.path.join(weight_dir, sorted(matches)[-1])
+    return None
+
+
+def find_gpt_model(slug: str, use_finetuned: bool = False) -> Optional[str]:
+    """
+    查找 GPT 模型。
+    默认返回预训练底模（方言场景更稳定）。
+    use_finetuned=True 时返回微调模型（普通话场景效果更好）。
+    """
+    sovits_dir = get_sovits_dir()
+    if not sovits_dir:
+        return None
+
+    if use_finetuned:
+        # 查找微调的 GPT 模型
         model_dir = os.path.join(voice_dir(slug), "gpt_sovits")
         if os.path.isdir(model_dir):
-            pth_files = [f for f in os.listdir(model_dir) if f.endswith(".pth")]
-            if pth_files:
-                status["gpt_sovits"]["model_ready"] = True
-                status["gpt_sovits"]["models"] = pth_files
+            ckpt = [f for f in os.listdir(model_dir) if f.endswith(".ckpt")]
+            if ckpt:
+                return os.path.join(model_dir, sorted(ckpt)[-1])
+        weight_dir = os.path.join(sovits_dir, "GPT_weights_v2")
+        if os.path.isdir(weight_dir):
+            matches = [f for f in os.listdir(weight_dir) if slug in f and f.endswith(".ckpt")]
+            if matches:
+                return os.path.join(weight_dir, sorted(matches)[-1])
 
-    # CosyVoice
+    # 预训练底模（默认，方言友好）
+    pretrained = os.path.join(sovits_dir, "GPT_SoVITS", "pretrained_models",
+                              "gsv-v2final-pretrained",
+                              "s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt")
+    if os.path.exists(pretrained):
+        return pretrained
+    return None
+
+
+def find_ref_audio(slug: str) -> Optional[str]:
+    """从训练数据中自动选择 3-10 秒的参考音频。"""
+    tdir = os.path.join(voice_dir(slug), "training_data", "wavs")
+    if not os.path.isdir(tdir):
+        return None
     try:
-        import importlib
-        importlib.import_module("cosyvoice")
-        status["cosyvoice"]["available"] = True
-        status["cosyvoice"]["detail"] = "已安装"
-    except ImportError:
-        status["cosyvoice"]["detail"] = "未安装（pip install cosyvoice）"
+        import soundfile as sf
+        best, best_score = None, float("inf")
+        for f in os.listdir(tdir):
+            if not f.endswith(".wav"):
+                continue
+            path = os.path.join(tdir, f)
+            dur = sf.info(path).duration
+            # GPT-SoVITS 要求 3-10 秒
+            if 3 <= dur <= 10:
+                score = abs(dur - 7)  # 7 秒最理想
+                if score < best_score:
+                    best, best_score = path, score
+        return best
+    except Exception:
+        return None
 
-    return status
+
+def find_ref_text(ref_audio: str, slug: str) -> str:
+    """从标注文件中查找参考音频对应的转录文本。"""
+    ann_path = os.path.join(voice_dir(slug), "training_data", "annotations.list")
+    if not os.path.exists(ann_path) or not ref_audio:
+        return ""
+    ref_name = os.path.basename(ref_audio)
+    try:
+        with open(ann_path, encoding="utf-8") as f:
+            for line in f:
+                parts = line.strip().split("|")
+                if len(parts) >= 4 and ref_name in parts[0]:
+                    return parts[3]
+    except Exception:
+        pass
+    return ""
 
 
-# ── GPT-SoVITS 合成 ──────────────────────────────────────────────────────────
+# ── GPT-SoVITS 本地推理 ──────────────────────────────────────────────────────
 
-def synthesize_sovits(
+_model_loaded = {"gpt": None, "sovits": None}
+
+
+def _ensure_sovits_path():
+    """确保 GPT-SoVITS 在 Python path 中。"""
+    sovits_dir = get_sovits_dir()
+    if not sovits_dir:
+        raise RuntimeError("GPT-SoVITS not found")
+    for p in [sovits_dir, os.path.join(sovits_dir, "GPT_SoVITS")]:
+        if p not in sys.path:
+            sys.path.insert(0, p)
+
+
+def synthesize_local(
     text: str,
     slug: str,
-    ref_audio: str = "",
+    ref_audio: str,
     ref_text: str = "",
     output_path: str = "output.wav",
+    use_finetuned_gpt: bool = False,
+    top_k: int = 15,
+    top_p: float = 0.8,
+    temperature: float = 0.8,
+    speed: float = 1.0,
 ) -> bool:
     """
-    调用 GPT-SoVITS 进行语音合成。
-
-    GPT-SoVITS 通常通过 API 服务运行：
-    1. 启动 API 服务：cd GPT-SoVITS && python api.py
-    2. 本工具通过 HTTP 调用 API
+    本地直接调用 GPT-SoVITS 推理（不需要启动 API 服务）。
+    这是实测验证的最可靠方式。
     """
-    import urllib.request
-    import urllib.parse
+    _ensure_sovits_path()
 
-    # GPT-SoVITS API 默认端口
-    api_base = os.environ.get("GPT_SOVITS_API", "http://127.0.0.1:9880")
+    gpt_model = find_gpt_model(slug, use_finetuned=use_finetuned_gpt)
+    sovits_model = find_sovits_model(slug)
 
-    # 构建请求参数
-    params = {
-        "text": text,
-        "text_language": "zh",
-    }
-    if ref_audio:
-        params["refer_wav_path"] = ref_audio
-    if ref_text:
-        params["prompt_text"] = ref_text
-        params["prompt_language"] = "zh"
-
-    try:
-        url = f"{api_base}/?" + urllib.parse.urlencode(params)
-        print(f"[合成] 请求 GPT-SoVITS API ...")
-
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            if resp.status == 200:
-                audio_data = resp.read()
-                with open(output_path, "wb") as f:
-                    f.write(audio_data)
-                print(f"[完成] {output_path}")
-                return True
-            else:
-                print(f"[错误] API 返回 {resp.status}")
-                return False
-
-    except urllib.error.URLError as e:
-        print(f"[错误] 无法连接 GPT-SoVITS API ({api_base})")
-        print(f"  请确保已启动 API 服务：")
-        sovits_dir = os.environ.get("GPT_SOVITS_DIR", DEFAULT_SOVITS_DIR)
-        print(f"  cd {sovits_dir} && python api.py")
+    if not gpt_model:
+        print("[x] GPT model not found")
         return False
-    except Exception as e:
-        print(f"[错误] 合成失败：{e}")
+    if not sovits_model:
+        print("[x] SoVITS model not found")
         return False
 
+    print(f"  GPT:    {os.path.basename(gpt_model)} {'(finetuned)' if use_finetuned_gpt else '(pretrained)'}")
+    print(f"  SoVITS: {os.path.basename(sovits_model)} (finetuned)")
+    print(f"  Ref:    {os.path.basename(ref_audio)}")
 
-# ── CosyVoice 合成 ───────────────────────────────────────────────────────────
+    from GPT_SoVITS.inference_webui import change_gpt_weights, change_sovits_weights, get_tts_wav
 
-def synthesize_cosyvoice(
-    text: str,
-    ref_audio: str,
-    output_path: str = "output.wav",
-) -> bool:
-    """
-    调用 CosyVoice 进行零样本合成。
-    只需要一段参考音频（3-30秒），无需训练。
-    """
-    try:
-        from cosyvoice.cli.cosyvoice import CosyVoice
-        import torchaudio
+    # 加载模型（如果和上次不同才重新加载）
+    if _model_loaded["gpt"] != gpt_model:
+        change_gpt_weights(gpt_model)
+        _model_loaded["gpt"] = gpt_model
+    if _model_loaded["sovits"] != sovits_model:
+        change_sovits_weights(sovits_model)
+        _model_loaded["sovits"] = sovits_model
 
-        print("[加载] CosyVoice 模型 ...")
-        cosyvoice = CosyVoice("pretrained_models/CosyVoice-300M")
+    results = list(get_tts_wav(
+        ref_wav_path=ref_audio,
+        prompt_text=ref_text,
+        prompt_language="中文",
+        text=text,
+        text_language="中文",
+        top_k=top_k,
+        top_p=top_p,
+        temperature=temperature,
+        speed=speed,
+    ))
 
-        print(f"[合成] 零样本模式，参考音频：{ref_audio}")
-        output = cosyvoice.inference_zero_shot(
-            tts_text=text,
-            prompt_text="",
-            prompt_speech_16k=ref_audio,
-        )
-
-        # 保存输出
-        for result in output:
-            torchaudio.save(output_path, result["tts_speech"], 22050)
-            print(f"[完成] {output_path}")
-            return True
-
-    except ImportError:
-        print("[错误] 未安装 CosyVoice")
-        print("  安装说明：https://github.com/FunAudioLLM/CosyVoice")
+    if not results:
+        print("[x] No audio generated")
         return False
-    except Exception as e:
-        print(f"[错误] CosyVoice 合成失败：{e}")
+
+    import soundfile as sf
+    import numpy as np
+
+    sr, audio = results[-1]
+    duration = len(audio) / sr
+
+    if duration < 0.5 or np.max(np.abs(audio)) < 10:
+        print(f"[!] Output too short ({duration:.1f}s) or silent")
+        if not use_finetuned_gpt:
+            print("    Try: --use-finetuned-gpt (if data is standard Mandarin)")
         return False
+
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    sf.write(output_path, audio, sr)
+    print(f"[ok] {output_path} ({duration:.1f}s)")
+    return True
 
 
 # ── 批量合成 ──────────────────────────────────────────────────────────────────
 
 def synthesize_batch(
-    text_file: str,
-    slug: str,
-    outdir: str,
-    engine: str = "sovits",
-    ref_audio: str = "",
+    text_file: str, slug: str, outdir: str,
+    ref_audio: str, ref_text: str = "",
+    use_finetuned_gpt: bool = False,
 ) -> dict:
-    """从文本文件批量合成，每行一句。"""
+    """批量合成：每行一句。"""
     os.makedirs(outdir, exist_ok=True)
 
     with open(text_file, encoding="utf-8") as f:
         lines = [l.strip() for l in f if l.strip()]
 
     if not lines:
-        print("[错误] 文本文件为空")
+        print("[x] Text file is empty")
         return {"total": 0, "success": 0, "failed": 0}
 
-    print(f"[批量] {len(lines)} 句文本待合成")
-
+    print(f"[batch] {len(lines)} sentences")
     stats = {"total": len(lines), "success": 0, "failed": 0}
 
     for i, text in enumerate(lines, 1):
         out_path = os.path.join(outdir, f"{i:03d}.wav")
-        print(f"[{i}/{len(lines)}] {text[:30]}{'...' if len(text) > 30 else ''}")
-
-        if engine == "cosyvoice":
-            ok = synthesize_cosyvoice(text, ref_audio, out_path)
-        else:
-            ok = synthesize_sovits(text, slug, ref_audio=ref_audio, output_path=out_path)
-
-        if ok:
-            stats["success"] += 1
-        else:
-            stats["failed"] += 1
+        print(f"\n[{i}/{len(lines)}] {text[:40]}{'...' if len(text) > 40 else ''}")
+        ok = synthesize_local(
+            text, slug, ref_audio, ref_text, out_path,
+            use_finetuned_gpt=use_finetuned_gpt,
+        )
+        stats["success" if ok else "failed"] += 1
 
     return stats
 
 
-# ── 自动选择参考音频 ──────────────────────────────────────────────────────────
+# ── Check ─────────────────────────────────────────────────────────────────────
 
-def find_ref_audio(slug: str) -> str:
-    """从训练数据中自动选择一段参考音频（时长 5-15秒的优先）。"""
-    tdir = os.path.join(voice_dir(slug), "training_data", "wavs")
-    if not os.path.isdir(tdir):
-        return ""
+def action_check(slug: str):
+    """检查合成环境。"""
+    print(f"=== {slug} voice synthesis status ===\n")
 
-    try:
-        import soundfile as sf
-        best = None
-        best_score = float("inf")
+    sovits_dir = get_sovits_dir()
+    print(f"GPT-SoVITS: {'[ok] ' + sovits_dir if sovits_dir else '[x] not found'}")
 
-        for f in os.listdir(tdir):
-            if not f.endswith(".wav"):
-                continue
-            path = os.path.join(tdir, f)
-            info = sf.info(path)
-            dur = info.duration
-            # 理想参考音频 5-15 秒
-            score = abs(dur - 10)
-            if 3 <= dur <= 20 and score < best_score:
-                best = path
-                best_score = score
+    sovits_model = find_sovits_model(slug)
+    print(f"SoVITS model (finetuned): {'[ok] ' + os.path.basename(sovits_model) if sovits_model else '[x]'}")
 
-        return best or ""
-    except Exception:
-        return ""
+    gpt_pretrained = find_gpt_model(slug, use_finetuned=False)
+    print(f"GPT model (pretrained): {'[ok] ' + os.path.basename(gpt_pretrained) if gpt_pretrained else '[x]'}")
+
+    gpt_finetuned = find_gpt_model(slug, use_finetuned=True)
+    print(f"GPT model (finetuned): {'[ok] ' + os.path.basename(gpt_finetuned) if gpt_finetuned else '[x] none'}")
+
+    ref = find_ref_audio(slug)
+    print(f"Reference audio: {'[ok] ' + os.path.basename(ref) if ref else '[x]'}")
+
+    if ref:
+        ref_text = find_ref_text(ref, slug)
+        if ref_text:
+            print(f"  Transcript: {ref_text[:60]}{'...' if len(ref_text) > 60 else ''}")
+
+    print()
+    if sovits_model and gpt_pretrained and ref:
+        print("[ok] Ready to synthesize")
+        print(f"  Usage: python voice_synthesizer.py --slug {slug} --text \"your text here\"")
+    else:
+        missing = []
+        if not sovits_dir:
+            missing.append("GPT-SoVITS (run voice_trainer.py --action setup)")
+        if not sovits_model:
+            missing.append("SoVITS model (run voice_trainer.py --action full)")
+        if not ref:
+            missing.append("Reference audio (run voice_trainer.py --action prepare)")
+        print("[x] Not ready. Missing:")
+        for m in missing:
+            print(f"  - {m}")
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(
-        description="语音合成工具 — 输入文字，输出亲人声音",
+        description="Voice synthesizer - type text, hear your loved one's voice",
     )
-    parser.add_argument("--slug", required=True, help="纪念档案 slug")
+    parser.add_argument("--slug", required=True, help="Memorial slug")
     parser.add_argument("--action", default="synthesize",
                         choices=["synthesize", "check"],
-                        help="操作：synthesize=合成（默认），check=检查环境")
+                        help="Action: synthesize (default) or check")
 
-    parser.add_argument("--text", help="要合成的文字")
-    parser.add_argument("--text-file", help="批量合成：每行一句的文本文件")
-    parser.add_argument("--output", default="output.wav", help="输出音频路径")
-    parser.add_argument("--outdir", default="./audio_out", help="批量输出目录")
+    parser.add_argument("--text", help="Text to synthesize")
+    parser.add_argument("--text-file", help="Batch: one sentence per line")
+    parser.add_argument("--output", default="output.wav", help="Output WAV path")
+    parser.add_argument("--outdir", default="./audio_out", help="Batch output directory")
 
-    parser.add_argument("--engine", default="sovits",
-                        choices=["sovits", "cosyvoice"],
-                        help="合成引擎：sovits（默认）或 cosyvoice")
-    parser.add_argument("--ref-audio", help="参考音频路径（影响语气，cosyvoice 必填）")
+    parser.add_argument("--ref-audio", help="Reference audio (3-10s, auto-selected if omitted)")
+    parser.add_argument("--ref-text", help="Reference audio transcript (auto-looked-up if omitted)")
+    parser.add_argument("--use-finetuned-gpt", action="store_true",
+                        help="Use finetuned GPT model instead of pretrained (better for standard Mandarin)")
+    parser.add_argument("--speed", type=float, default=1.0, help="Speech speed (default 1.0)")
+    parser.add_argument("--top-k", type=int, default=15)
+    parser.add_argument("--top-p", type=float, default=0.8)
+    parser.add_argument("--temperature", type=float, default=0.8)
 
     args = parser.parse_args()
 
     if args.action == "check":
-        status = check_engines(args.slug)
-        print(f"=== {args.slug} 语音合成环境 ===\n")
-
-        s = status["gpt_sovits"]
-        print(f"GPT-SoVITS：{'[ok] 已安装' if s['available'] else '[x] 未安装'}")
-        if s["available"]:
-            print(f"  路径：{s['detail']}")
-            print(f"  模型：{'[ok] 已训练 — ' + ', '.join(s.get('models', [])) if s['model_ready'] else '[x] 未训练'}")
-
-        c = status["cosyvoice"]
-        print(f"\nCosyVoice：{'[ok]' if c['available'] else '[x]'} {c['detail']}")
-
-        ref = find_ref_audio(args.slug)
-        if ref:
-            print(f"\n自动选择的参考音频：{ref}")
+        action_check(args.slug)
         return
 
-    # 合成模式
     if not args.text and not args.text_file:
-        parser.error("需要 --text 或 --text-file")
+        parser.error("--text or --text-file required")
 
+    # 自动查找参考音频和文本
     ref_audio = args.ref_audio or find_ref_audio(args.slug)
+    if not ref_audio:
+        print("[x] No reference audio found. Run voice_trainer.py --action prepare first.")
+        sys.exit(1)
+
+    ref_text = args.ref_text or find_ref_text(ref_audio, args.slug)
 
     if args.text_file:
         stats = synthesize_batch(
             args.text_file, args.slug, args.outdir,
-            engine=args.engine, ref_audio=ref_audio,
+            ref_audio, ref_text, args.use_finetuned_gpt,
         )
-        print(f"\n[汇总] 成功 {stats['success']}/{stats['total']}")
+        print(f"\n[summary] {stats['success']}/{stats['total']} succeeded")
     else:
-        if args.engine == "cosyvoice":
-            if not ref_audio:
-                parser.error("CosyVoice 模式需要 --ref-audio 参考音频")
-            synthesize_cosyvoice(args.text, ref_audio, args.output)
-        else:
-            synthesize_sovits(args.text, args.slug,
-                              ref_audio=ref_audio, output_path=args.output)
+        print(f"[synthesize] \"{args.text}\"")
+        ok = synthesize_local(
+            args.text, args.slug, ref_audio, ref_text, args.output,
+            use_finetuned_gpt=args.use_finetuned_gpt,
+            top_k=args.top_k, top_p=args.top_p,
+            temperature=args.temperature, speed=args.speed,
+        )
+        if not ok:
+            sys.exit(1)
 
 
 if __name__ == "__main__":
