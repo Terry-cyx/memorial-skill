@@ -11,47 +11,118 @@
 
 <br>
 
-Your grandfather is gone, leaving behind a garden and decades of unspoken words.<br>
-Your mother is gone, and you realize you can barely remember the phrase she always said.<br>
-Your old friend is gone, and the inside jokes only the two of you understood now have only one keeper.<br>
-They left, but you don't want the memories to disappear with them.<br>
-
-**Turn those chat logs, photos, and stories into a memorial archive that can be preserved and revisited.**
+**Turn WeChat messages and voice notes into a digital life you can talk to.**
 
 <br>
 
-> 💡 **If they're still here:**
-> Starting the archive now is even better.
-> A person telling their own story in their own words is ten times richer than reconstructing it afterward.
-> This archive can be a gift to you, and to everyone who comes after.
+Just give the AI your WeChat chat history with them (text and voice),<br>
+it learns how they spoke, their personality, their stories —<br>
+then you can keep talking to them,<br>
+in text, or **in their own voice**.
 
-<br>
-
-Provide source materials (WeChat logs, QQ messages, photos, letters, family interviews) plus your own memories.<br>
-Generate an **AI memorial that truly remembers who they were** —<br>
-speaks with their catchphrases, recalls the places they lived, reflects how they would have seen things.
-
-> ⚠️ **This archive is built from memory. It represents remembrance, not resurrection.**
-
-[Data Sources](#data-sources) · [Installation](#installation) · [Usage](#usage) · [Examples](#examples) · [中文](README.md)
+[Demo](#demo) · [How to Use](#how-to-use) · [Installation](#installation) · [中文](README.md)
 
 </div>
 
 ---
 
-## Data Sources
+## Demo
 
-| Source | Format | Notes |
-|--------|--------|-------|
-| WeChat chat logs | WeChatMsg / exported txt | Recommended — richest language data |
-| QQ chat logs | txt / mht export | Good for older generations or early records |
-| Audio | mp3 / m4a / wav / ogg / flac | Voice messages, interview recordings, family tapes — auto-transcribed |
-| Photos | JPEG/PNG with EXIF | Extracts life timeline and frequent locations |
-| Handwritten letters/diaries | Photos or scans | Invaluable firsthand material |
-| Social media posts | Screenshots or text | Captures public expression style |
-| Family interviews | Interview transcripts | Built-in interview guide to help extract memories |
-| Work/hobby documents | PDF / Word / text | Reconstructs professional identity and interests |
-| Narration | Plain text | Your subjective memory — equally valid |
+### Text Conversation
+
+```
+You          ❯ Grandpa, I got promoted today
+
+Grandpa      ❯ Mm, good. Does your mom know?
+               Don't just celebrate — more responsibility now. Stay grounded.
+               "Taking a loss is a blessing." Remember that.
+
+               — This response is inferred from his personality, not his actual words.
+```
+
+### Voice
+
+```
+You          ❯ Say "taking a loss is a blessing" in grandpa's voice
+
+Grandpa      ❯ 🔊 [10-second audio clip — in grandpa's actual voice timbre]
+```
+
+> The voice is trained from WeChat voice messages. The timbre is theirs.
+
+---
+
+## How to Use
+
+**Simplest way: give AI your WeChat chat history. That's it.**
+
+```
+You          ❯ /create-memorial
+
+AI           ❯ Who would you like to create a memorial for?
+
+You          ❯ My grandfather. There are chat logs and voice messages in our family WeChat group.
+
+AI           ❯ Got it. Extracting his data from WeChat...
+               Found 350 voice messages and 3 text messages.
+               Analyzing his speech patterns and personality...
+               Training his voice model...
+
+               ✓ Done. You can talk to him now.
+```
+
+---
+
+## What It Does
+
+```
+WeChat chats + voice messages
+        ↓
+  AI analyzes their speech style, personality, stories, values
+        ↓
+  Generates persona (how they'd talk and react)
+        ↓
+  Trains voice model (their timbre)
+        ↓
+  You can talk to them (text + voice)
+```
+
+### Input
+
+| Material | Value | Notes |
+|----------|:---:|-------|
+| **WeChat/QQ voice messages** | ★★★ | Most precious — personality analysis + voice training |
+| **WeChat/QQ text chats** | ★★★ | Catchphrases, habits, how they show care |
+| **Photos** | ★★ | Timeline, places they frequented |
+| **Family interviews** | ★★ | Others' perspective of them |
+| **Letters/diaries** | ★★ | Values, inner world |
+| **Oral stories** | ★ | Anything you remember |
+
+> Minimum: **just WeChat text chats** — paste them in and you get a memorial.
+> Best results: voice messages + text → both text and voice conversation unlocked.
+
+### Output
+
+| Capability | Basic | Voice Enhanced |
+|------------|:---:|:---:|
+| Text conversation with them | ✓ | ✓ |
+| Ask their opinion on things | ✓ | ✓ |
+| Tell their stories | ✓ | ✓ |
+| Generate eulogies | ✓ | ✓ |
+| Family interview questions | ✓ | ✓ |
+| **Hear their voice** | | ✓ |
+
+> ⚠️ This is remembrance based on memory, not the actual person. Responses are AI-inferred "what they might say."
+
+---
+
+## If They're Still Here
+
+Starting the archive now is even better.
+
+A person telling their own story is ten times richer than reconstructing it afterward. The system includes guided interview questions to help them share stories they've never told.
+
+Archives built while alive automatically become memorial archives after they pass — no rebuilding needed.
 
 ---
 
