@@ -57,26 +57,26 @@
 
 ## 安装
 
-### Claude Code
+本项目分两档，按需选择：
 
-> **重要**：Claude Code 从 **git 仓库根目录** 的 `.claude/skills/` 查找 skill。请在正确的位置执行。
+| | 基础版（文字+图片） | 语音增强版（+声音克隆） |
+|---|---|---|
+| 功能 | 纪念档案、聊天分析、照片时间线 | 全部 + 用亲人声音说话 |
+| 硬件 | 任意电脑 | 需要 NVIDIA 显卡 |
+| 安装时间 | 5 分钟 | 30 分钟 |
+
+**基础版安装（5 分钟）：**
 
 ```bash
-# 安装到当前项目（在 git 仓库根目录执行）
+# 安装到 Claude Code skills 目录
 mkdir -p .claude/skills
-git clone https://github.com/yourname/memorial-skill .claude/skills/create-memorial
+git clone https://github.com/Terry-cyx/memorial-skill .claude/skills/create-memorial
 
-# 或安装到全局（所有项目都能用）
-git clone https://github.com/yourname/memorial-skill ~/.claude/skills/create-memorial
+# 安装依赖（可选依赖失败不影响基础功能）
+pip install -r .claude/skills/create-memorial/requirements.txt
 ```
 
-### 依赖（可选）
-
-```bash
-pip3 install -r requirements.txt
-```
-
-> `pypinyin` — 中文姓名转 slug；`Pillow` — 照片 EXIF 读取。两者均非必须，缺失时自动降级。
+**语音增强版**需要额外安装 PyTorch CUDA、GPT-SoVITS、微信 3.9.x 等，详见 **[INSTALL.md](INSTALL.md)**。
 
 ---
 

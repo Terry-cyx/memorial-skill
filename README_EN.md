@@ -57,26 +57,26 @@ speaks with their catchphrases, recalls the places they lived, reflects how they
 
 ## Installation
 
-### Claude Code
+Two tiers, pick what you need:
 
-> **Important**: Claude Code looks for skills in `.claude/skills/` from the **git repository root**. Run these commands from the correct location.
+| | Basic (Text + Photos) | Voice Enhanced (+Voice Cloning) |
+|---|---|---|
+| Features | Memorial archive, chat analysis, photo timeline | Everything + hear their voice |
+| Hardware | Any computer | NVIDIA GPU required |
+| Setup time | 5 minutes | 30 minutes |
+
+**Basic install (5 min):**
 
 ```bash
-# Install to current project (run from git repo root)
+# Install to Claude Code skills directory
 mkdir -p .claude/skills
-git clone https://github.com/yourname/memorial-skill .claude/skills/create-memorial
+git clone https://github.com/Terry-cyx/memorial-skill .claude/skills/create-memorial
 
-# Or install globally (available in all projects)
-git clone https://github.com/yourname/memorial-skill ~/.claude/skills/create-memorial
+# Install dependencies (optional deps failing won't break basic features)
+pip install -r .claude/skills/create-memorial/requirements.txt
 ```
 
-### Dependencies (optional)
-
-```bash
-pip3 install -r requirements.txt
-```
-
-> `pypinyin` — Chinese name to pinyin slug conversion; `Pillow` — photo EXIF extraction. Neither is required; the tool degrades gracefully without them.
+**Voice Enhanced** requires PyTorch CUDA, GPT-SoVITS, WeChat 3.9.x, etc. See **[INSTALL.md](INSTALL.md)** for details.
 
 ---
 
